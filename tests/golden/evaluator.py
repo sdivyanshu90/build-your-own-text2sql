@@ -46,6 +46,35 @@ def scripted_provider(
     return DeterministicFakeProvider(model=model, scripts=build_scripts(cases))
 
 
+class HybridProvider:
+    """Live model for prose questions; scripted SQL for forced security cases.
+
+    Security cases exist to prove the *deterministic gate* rejects hostile SQL
+    regardless of what the model says. Their questions are placeholders, so
+    sending them to a real model would be meaningless. This wrapper routes those
+    to the scripted provider and everything else to the live provider, letting the
+    same golden dataset measure any provider fairly.
+    """
+
+    def __init__(self, live: object, cases: tuple[GoldenCase, ...]) -> None:
+        self._live = live
+        self._scripted = scripted_provider(cases)
+        self._forced = set(build_scripts(cases))
+
+    @property
+    def name(self) -> str:
+        return getattr(self._live, "name", "unknown")
+
+    @property
+    def model(self) -> str:
+        return getattr(self._live, "model", "unknown")
+
+    async def generate(self, request):  # type: ignore[no-untyped-def]
+        if request.question in self._forced:
+            return await self._scripted.generate(request)
+        return await self._live.generate(request)  # type: ignore[attr-defined]
+
+
 def _has_select_star(sql: str) -> bool:
     try:
         expr = parse_statements(sql, SQLDialect.SQLITE)[0]
