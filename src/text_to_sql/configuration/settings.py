@@ -36,8 +36,13 @@ class Environment(str, Enum):
     TEST = "test"
 
 
-LLMProviderName = Literal["fake", "openai"]
+LLMProviderName = Literal["fake", "openai", "gemini"]
 SQLDialectName = Literal["sqlite", "postgres"]
+
+# Google Gemini speaks the OpenAI chat-completions protocol at this endpoint, so
+# it reuses the same adapter rather than needing a bespoke client.
+GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai"
+_OPENAI_DEFAULT_BASE_URL = "https://api.openai.com/v1"
 
 
 class Settings(BaseSettings):
@@ -150,6 +155,18 @@ class Settings(BaseSettings):
     def effective_readonly_url(self) -> str:
         """URL used by the read-only executor (falls back to the main URL)."""
         return self.readonly_database_url or self.database_url
+
+    @property
+    def effective_llm_base_url(self) -> str:
+        """Base URL for the configured provider.
+
+        When ``llm_provider='gemini'`` and the operator has not overridden
+        ``llm_base_url``, default to Google's OpenAI-compatibility endpoint so the
+        provider works with no extra configuration.
+        """
+        if self.llm_provider == "gemini" and self.llm_base_url == _OPENAI_DEFAULT_BASE_URL:
+            return GEMINI_BASE_URL
+        return self.llm_base_url
 
     def resolve_llm_api_key(self) -> str | None:
         """Resolve the provider API key from the environment variable it names.
