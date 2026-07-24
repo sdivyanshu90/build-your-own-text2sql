@@ -1,0 +1,60 @@
+# Local development stack: PostgreSQL + the API, wired to migrate and seed
+# automatically. Start everything with a single command:
+#
+#     docker compose up --build
+#
+# The API comes up on http://localhost:8000 (docs at /api/v1/docs). The default
+# LLM provider is the deterministic fake, so NO credentials are required.
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: t2sql
+      POSTGRES_PASSWORD: t2sql
+      POSTGRES_DB: t2sql
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U t2sql -d t2sql"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # One-shot: run migrations then load deterministic seed data, then exit.
+  migrate:
+    build:
+      context: .
+    command: >
+      sh -c "alembic upgrade head && python scripts/seed.py"
+    environment:
+      T2SQL_DATABASE_URL: postgresql+psycopg://t2sql:t2sql@db:5432/t2sql
+      T2SQL_SQL_DIALECT: postgres
+      T2SQL_LLM_PROVIDER: fake
+    depends_on:
+      db:
+        condition: service_healthy
+
+  api:
+    build:
+      context: .
+    ports:
+      - "8000:8000"
+    environment:
+      T2SQL_DATABASE_URL: postgresql+psycopg://t2sql:t2sql@db:5432/t2sql
+      # Dedicated read-only role recommended in production; same URL here for demo.
+      T2SQL_READONLY_DATABASE_URL: postgresql+psycopg://t2sql:t2sql@db:5432/t2sql
+      T2SQL_SQL_DIALECT: postgres
+      T2SQL_LLM_PROVIDER: fake
+      T2SQL_ENVIRONMENT: development
+      T2SQL_LOG_JSON: "true"
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  pgdata:
