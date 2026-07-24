@@ -43,9 +43,24 @@ directly. See [`.env.example`](../../.env.example) for a copy-paste starting poi
 
 | Variable | Default | Notes |
 | --- | --- | --- |
-| `T2SQL_LLM_PROVIDER` | `fake` | `fake` (no creds) or `openai` |
+| `T2SQL_LLM_PROVIDER` | `fake` | `fake` (no creds), `openai`, or `gemini` |
 | `T2SQL_LLM_MODEL` | `deterministic-fake` | model id |
 | `T2SQL_LLM_BASE_URL` | `https://api.openai.com/v1` | any OpenAI-compatible endpoint |
+
+### Using Google Gemini
+
+Gemini exposes an OpenAI-compatible endpoint, so it reuses the same adapter — no
+bespoke client. Selecting `gemini` auto-defaults the base URL to
+`https://generativelanguage.googleapis.com/v1beta/openai` (override
+`T2SQL_LLM_BASE_URL` to change it):
+
+```bash
+export T2SQL_LLM_PROVIDER=gemini
+export T2SQL_LLM_MODEL=gemini-2.5-flash
+export T2SQL_LLM_API_KEY_ENV=GEMINI_API_KEY
+export GEMINI_API_KEY=...        # the key itself, read via the env var named above
+```
+
 | `T2SQL_LLM_API_KEY_ENV` | `OPENAI_API_KEY` | **name** of the env var holding the key |
 | `T2SQL_LLM_TIMEOUT_SECONDS` | `30` | |
 | `T2SQL_LLM_MAX_RETRIES` | `2` | |
