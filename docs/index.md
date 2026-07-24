@@ -29,7 +29,9 @@ references the concrete modules and classes that implement it.
    - [Observability & alerting](operations/observability.md)
    - [Troubleshooting](operations/troubleshooting.md)
 7. **[API reference](api/reference.md)**
-8. **[Testing strategy & evaluation methodology](testing/strategy.md)**
+8. **[Testing strategy & evaluation methodology](testing/strategy.md)** ·
+   **[Live benchmarks (Gemini)](testing/benchmarks.md)** — measured results
+   against a real model, including a validator bug it uncovered.
 9. **[Example scenarios](scenarios.md)** — the 17 required scenarios end-to-end.
 10. **[Known limitations & future work](limitations.md)** · **[Glossary](glossary.md)**
 11. **[Architecture Decision Records](decisions/)**
