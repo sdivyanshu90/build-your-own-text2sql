@@ -128,6 +128,14 @@ any OpenAI-compatible endpoint with JSON output, timeout, retries, and typed err
 mapping. **Tested** in `tests/unit/test_fake_provider.py` and
 `tests/integration/test_openai_adapter.py` (against a mock HTTP server).
 
+**Adding a vendor is a config change, not a code change.** Google Gemini speaks
+the OpenAI chat-completions protocol, so `T2SQL_LLM_PROVIDER=gemini` reuses the
+same adapter — only the base URL (auto-defaulted to Google's compatibility
+endpoint) and the reported provider name differ. This is the abstraction paying
+off: the orchestrator, validator, and policy engine are untouched. See
+[configuration](../operations/configuration.md#using-google-gemini) and the
+measured results in [benchmarks](../testing/benchmarks.md).
+
 ## Ambiguity detection
 
 **What.** Deciding *before* generation whether a reasonable alternative reading
