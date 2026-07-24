@@ -49,6 +49,68 @@ prompt-injected*. See [`docs/security/threat_model.md`](docs/security/threat_mod
 
 ---
 
+## Verified against a live model
+
+Run against **Google Gemini 2.5 Flash** (not the fake provider), all 22 edge cases
+pass — happy paths, ambiguity, prompt injection, and every deterministic security
+gate:
+
+![Edge-case matrix run against live Gemini 2.5 Flash: 22/22 passed](docs/assets/edge-cases-gemini.png)
+
+Reproduce it yourself:
+
+```bash
+export T2SQL_LLM_PROVIDER=gemini T2SQL_LLM_MODEL=gemini-2.5-flash
+export T2SQL_LLM_API_KEY_ENV=GEMINI_API_KEY GEMINI_API_KEY=...
+python scripts/run_edge_cases.py
+```
+
+Cases 1–11 are prose questions where **the live model writes the SQL**. Cases
+12–22 are marked `[forced]`: hostile SQL is scripted straight into the model's
+mouth, so the test measures the **deterministic gate** rather than the model's
+willingness to refuse. A security control you can only demonstrate by asking the
+model nicely is not a control.
+
+**Reliability:** 3 consecutive full runs → **22/22, 22/22, 22/22**. The 11 forced
+security cases pass in **1–6 ms** because they never reach the model.
+
+### Benchmark
+
+6 analytical questions × 4 trials through the full pipeline
+(`python scripts/benchmark.py --provider gemini --trials 4 --compare-fake`):
+
+| Provider | Model | Samples | Mean | p50 | p95 | LLM call | **Engine overhead** | Failures |
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| fake | `deterministic-fake` | 24 | 6 ms | 5 ms | 10 ms | 0 ms | **5.8 ms** | 0 |
+| gemini | `gemini-2.5-flash` | 24 | 8 713 ms | 8 316 ms | 21 732 ms | 8 704 ms | **8.8 ms** | 0 |
+
+**Engine overhead** = total wall time minus the LLM call — retrieval, parsing, AST
+validation, policy, tenant rewriting, cost analysis, execution, and explanation.
+At **~9 ms** it is ~0.1% of end-to-end latency: the model dominates, and the entire
+security pipeline is effectively free. Mean stage breakdown on Gemini: retrieval
+0.46 ms, SQL execution 1.05 ms, validation + security + explanation 7.3 ms.
+
+Note the tail: **p95 is 2.5× p50**, so size timeouts against p95, not the mean.
+Golden evaluation against live Gemini also scores **14/14** with 1.0 on valid-SQL
+rate, execution accuracy, schema-linking recall, clarification accuracy, and unsafe
+rejection rate. Full methodology and caveats: [`docs/testing/benchmarks.md`](docs/testing/benchmarks.md).
+
+> Adding Gemini required **no new provider code** — it speaks the OpenAI
+> chat-completions protocol, so it reuses the existing adapter with a different
+> base URL. That is the provider abstraction doing its job.
+
+### A real bug this found
+
+The live model emitted a multi-CTE query using `refunds AS r` in a CTE *and*
+`regions AS r` in the outer query — both legal, since an alias is only unique
+within a scope. The validator kept one **global** alias→table map, so `r` resolved
+to whichever table was parsed last and it rejected valid SQL as `unknown_column`.
+Fixed (alias → *set* of candidate tables, recording every match so authorization
+stays strict) and locked in by `tests/unit/test_validator_alias_scopes.py`.
+The deterministic fake never produced SQL shaped like that — only a real model did.
+
+---
+
 ## Quickstart (no credentials)
 
 The default configuration uses SQLite and a **deterministic fake LLM provider**,
