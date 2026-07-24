@@ -46,14 +46,17 @@ def build_provider(settings: Settings) -> LLMProvider:
     """Instantiate the configured LLM provider."""
     if settings.llm_provider == "fake":
         return DeterministicFakeProvider(model=settings.llm_model)
-    if settings.llm_provider == "openai":
+    # Both OpenAI and Gemini speak the OpenAI chat-completions protocol, so they
+    # share one adapter; only the base URL and reported provider name differ.
+    if settings.llm_provider in ("openai", "gemini"):
         return OpenAICompatibleProvider(
             api_key=settings.resolve_llm_api_key(),
             model=settings.llm_model,
-            base_url=settings.llm_base_url,
+            base_url=settings.effective_llm_base_url,
             timeout_seconds=settings.llm_timeout_seconds,
             max_retries=settings.llm_max_retries,
             temperature=settings.llm_temperature,
+            provider_name=settings.llm_provider,
         )
     raise ConfigurationError(f"Unknown LLM provider '{settings.llm_provider}'.")
 
