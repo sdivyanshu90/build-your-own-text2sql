@@ -245,7 +245,9 @@ class SQLValidator:
         # GROUP BY / ORDER BY / HAVING and are NOT table columns.
         output_aliases = self._output_aliases(expression)
 
-        alias_to_real: dict[str, str] = {}
+        # alias (lowercased) -> every catalog table that alias may denote. An
+        # alias can be reused in different scopes, so this is a set, not a scalar.
+        alias_to_real: dict[str, set[str]] = {}
         real_tables: list[str] = []
 
         for table in expression.find_all(exp.Table):
@@ -295,9 +297,12 @@ class SQLValidator:
                 continue
 
             real_tables.append(table_info.qualified_name)
+            # An alias is only unique WITHIN a scope: `refunds AS r` in a CTE and
+            # `regions AS r` in the outer query legitimately coexist. So map each
+            # alias to the SET of tables it may denote anywhere in the statement.
             alias = (table.alias or name).lower()
-            alias_to_real[alias] = name
-            alias_to_real[name.lower()] = name
+            alias_to_real.setdefault(alias, set()).add(name)
+            alias_to_real.setdefault(name.lower(), set()).add(name)
 
         outcome.referenced_tables = sorted(set(real_tables))
 
@@ -318,19 +323,30 @@ class SQLValidator:
             if qualifier:
                 if qualifier in virtual_aliases:
                     continue
-                real = alias_to_real.get(qualifier)
-                if real is None:
+                candidates = alias_to_real.get(qualifier)
+                if not candidates:
                     # Qualifier isn't a known real table/alias; could be a CTE not
                     # captured — skip rather than false-positive.
                     continue
-                table_info = schema.table(real)
-                if table_info and table_info.has_column(col_name):
-                    resolved_columns.add(f"{table_info.name}.{col_name}")
+                # The alias may denote several tables (reused across scopes). The
+                # column is valid if ANY candidate defines it. We record EVERY
+                # matching candidate so the policy engine sees the strictest
+                # possible set of base columns — over-reporting is safe, missing
+                # a sensitive column would not be.
+                owners = [
+                    info
+                    for info in (schema.table(cand) for cand in sorted(candidates))
+                    if info is not None and info.has_column(col_name)
+                ]
+                if owners:
+                    for info in owners:
+                        resolved_columns.add(f"{info.name}.{col_name}")
                 else:
+                    shown = "', '".join(sorted(candidates))
                     outcome.add(
                         "unknown_column",
-                        f"Unknown column '{col_name}' on table '{real}'.",
-                        location=f"column: {real}.{col_name}",
+                        f"Unknown column '{col_name}' on table '{shown}'.",
+                        location=f"column: {sorted(candidates)[0]}.{col_name}",
                     )
             else:
                 if col_name.lower() in output_aliases:
