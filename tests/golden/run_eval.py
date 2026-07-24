@@ -20,6 +20,7 @@ from pathlib import Path
 from tests.golden.dataset import DATASET_VERSION, GOLDEN_CASES
 from tests.golden.evaluator import (
     CaseResult,
+    HybridProvider,
     compute_metrics,
     evaluate_case,
     result_to_dict,
@@ -44,6 +45,8 @@ async def run() -> tuple[list[CaseResult], dict[str, float]]:
         database_url="sqlite:///./data/eval.db",
         llm_provider=provider_name,  # type: ignore[arg-type]
         llm_model=os.environ.get("T2SQL_LLM_MODEL", "deterministic-fake"),
+        llm_api_key_env=os.environ.get("T2SQL_LLM_API_KEY_ENV", "OPENAI_API_KEY"),
+        llm_timeout_seconds=float(os.environ.get("T2SQL_LLM_TIMEOUT_SECONDS", "60")),
         sql_dialect="sqlite",
         log_json=False,
     )
@@ -60,6 +63,9 @@ async def run() -> tuple[list[CaseResult], dict[str, float]]:
         provider=provider,
         clock=lambda: FIXED_NOW,
     )
+    if provider_name != "fake":
+        # Live model for prose; scripted SQL for the forced security cases.
+        container.orchestrator._provider = HybridProvider(container.provider, GOLDEN_CASES)
     try:
         results = [await evaluate_case(container.orchestrator, case) for case in GOLDEN_CASES]
     finally:
