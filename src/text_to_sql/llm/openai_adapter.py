@@ -46,10 +46,11 @@ class OpenAICompatibleProvider:
         max_retries: int = 2,
         temperature: float = 0.0,
         client: httpx.AsyncClient | None = None,
+        provider_name: str = "openai",
     ) -> None:
         if not api_key:
             raise ConfigurationError(
-                "OpenAI-compatible provider selected but no API key is configured.",
+                f"Provider '{provider_name}' selected but no API key is configured.",
                 remediation="Set the environment variable named by T2SQL_LLM_API_KEY_ENV.",
             )
         self._api_key = api_key
@@ -59,10 +60,14 @@ class OpenAICompatibleProvider:
         self._max_retries = max_retries
         self._temperature = temperature
         self._client = client  # injectable for tests
+        # Any vendor speaking the OpenAI chat-completions protocol reuses this
+        # adapter (e.g. Google Gemini via its OpenAI-compatibility endpoint);
+        # `provider_name` keeps telemetry/response metadata truthful.
+        self._provider_name = provider_name
 
     @property
     def name(self) -> str:
-        return "openai"
+        return self._provider_name
 
     @property
     def model(self) -> str:
@@ -164,7 +169,7 @@ class OpenAICompatibleProvider:
             confidence=_coerce_confidence(obj.get("confidence")),
             needs_clarification=bool(obj.get("needs_clarification", False)),
             prompt_version=request.prompt.version,
-            provider="openai",
+            provider=self._provider_name,
             model=self._model,
             usage=usage,
         )
